@@ -1,23 +1,14 @@
 """
-Model training entry point.
+Training entry point for both risk prediction domains.
 
-This script orchestrates the full training pipeline for a given domain:
-  1. Load config
-  2. Ingest raw data
-  3. Validate data
-  4. Build feature engineering pipeline
-  5. Split train/test
-  6. Train baseline model (Logistic Regression)
-  7. Train primary model (XGBoost) with Optuna hyperparameter tuning
-  8. Log everything to MLflow
-  9. Save the best model and preprocessing pipeline
+Orchestrates: data ingestion → validation → feature engineering →
+train/test split → baseline model → Optuna-tuned XGBoost →
+MLflow logging → model serialization → SHAP analysis.
 
 Usage:
     python -m src.models.train --domain credit_risk
     python -m src.models.train --domain network_intrusion
-
-Design principle: this script is the "glue" — it imports from all other
-modules and wires them together. It should contain very little business logic itself.
+    python -m src.models.train --domain all
 """
 
 import argparse
@@ -61,18 +52,12 @@ PROJECT_ROOT = get_project_root()
 
 
 def train_credit_risk() -> None:
-    """
-    Full training pipeline for the credit risk domain.
-
-    Steps:
-        load → validate → feature engineer → split → baseline → tune XGBoost → log
-    """
+    """Full training pipeline for the credit risk domain."""
     cfg = load_config("credit_risk")
 
-    # ── Step 1: Load raw data ──────────────────────────────────────────────────
+    # ── Load and validate ─────────────────────────────────────────────────────
     df = load_credit_risk(cfg)
 
-    # ── Step 2: Validate ──────────────────────────────────────────────────────
     all_features = cfg["features"]["numeric_features"]
     report = validate_dataframe(
         df=df,
@@ -83,15 +68,13 @@ def train_credit_risk() -> None:
     if not report["passed"]:
         raise RuntimeError(f"Data validation failed: {report['errors']}")
 
-    # ── Step 3: Split features / target ───────────────────────────────────────
-    # Drop the unnamed index column Kaggle adds and the target
+    # ── Feature / target split ────────────────────────────────────────────────
     X, y = split_features_target(
         df,
         target_column=cfg["data"]["target_column"],
         drop_columns=cfg["features"].get("drop_columns", []),
     )
 
-    # ── Step 4: Train/test split (stratified) ─────────────────────────────────
     X_train, X_test, y_train, y_test = make_train_test_split(
         X, y,
         test_size=cfg["data"]["test_size"],
@@ -99,16 +82,13 @@ def train_credit_risk() -> None:
         stratify=True,
     )
 
-    # ── Step 5: Feature engineering pipeline ──────────────────────────────────
-    # CRITICAL: fit the pipeline ONLY on X_train, then transform both sets.
-    # Never fit on X_test — that would leak test distribution info into the pipeline.
+    # ── Feature engineering (fit on train only) ───────────────────────────────
     pipeline = build_credit_pipeline()
     X_train_proc = pipeline.fit_transform(X_train)
     X_test_proc = pipeline.transform(X_test)
 
     feature_names = get_feature_names(cfg)
 
-    # Save processed data for notebooks and debugging
     train_df = pd.DataFrame(X_train_proc, columns=feature_names)
     train_df[cfg["data"]["target_column"]] = y_train.values
     test_df = pd.DataFrame(X_test_proc, columns=feature_names)
@@ -116,17 +96,16 @@ def train_credit_risk() -> None:
     save_processed(train_df, cfg["data"]["processed_train_path"])
     save_processed(test_df, cfg["data"]["processed_test_path"])
 
-    # Save the fitted pipeline for use at inference time
     pipeline_path = str(PROJECT_ROOT / "models" / "credit_risk" / "preprocessing_pipeline.joblib")
     save_pipeline(pipeline, pipeline_path)
 
-    # ── Step 6: Configure MLflow ───────────────────────────────────────────────
+    # ── MLflow setup ──────────────────────────────────────────────────────────
     mlruns_path = PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]
     mlruns_path.mkdir(exist_ok=True)
-    mlflow.set_tracking_uri(mlruns_path.as_uri())  # file:///C:/... — required on Windows
+    mlflow.set_tracking_uri(mlruns_path.as_uri())
     mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
 
-    # ── Step 7: Train baseline (Logistic Regression) ──────────────────────────
+    # ── Baseline: Logistic Regression ─────────────────────────────────────────
     logger.info("Training baseline Logistic Regression model...")
     with mlflow.start_run(run_name="baseline_logistic_regression"):
         baseline_params = cfg["model"]["baseline"]["params"]
@@ -142,7 +121,6 @@ def train_credit_risk() -> None:
             model_name="baseline_lr",
         )
 
-        # Log params and metrics to MLflow
         mlflow.log_params(baseline_params)
         mlflow.log_metrics(baseline_metrics["scalar_metrics"])
         mlflow.sklearn.log_model(baseline_model, "model")
@@ -152,27 +130,13 @@ def train_credit_risk() -> None:
             auc=baseline_metrics["scalar_metrics"]["roc_auc"],
         )
 
-    # ── Step 8: Hyperparameter tuning with Optuna ──────────────────────────────
+    # ── Optuna hyperparameter search ──────────────────────────────────────────
     logger.info("Starting Optuna hyperparameter search for XGBoost...")
 
     tuning_cfg = cfg["tuning"]
     ss = tuning_cfg["search_space"]
 
     def objective(trial: optuna.Trial) -> float:
-        """
-        Optuna objective function.
-
-        How Optuna works:
-          - It calls this function many times (n_trials times)
-          - Each call receives a 'trial' object with .suggest_* methods
-          - suggest_int / suggest_float sample values from the search space
-          - Optuna uses Bayesian optimization (Tree-structured Parzen Estimator)
-            to focus sampling on promising regions of the search space
-          - It's smarter than GridSearch (exhaustive) or RandomSearch (dumb random)
-
-        Returns:
-            The metric to optimize (ROC-AUC on validation set).
-        """
         params = {
             "n_estimators": trial.suggest_int("n_estimators", ss["n_estimators"][0], ss["n_estimators"][1]),
             "max_depth": trial.suggest_int("max_depth", ss["max_depth"][0], ss["max_depth"][1]),
@@ -196,23 +160,17 @@ def train_credit_risk() -> None:
         y_prob = model.predict_proba(X_test_proc)[:, 1]
         return roc_auc_score(y_test, y_prob)
 
-    # optuna.create_study: direction="maximize" means higher metric = better
-    # TPESampler is the default — Bayesian TPE algorithm
     study = optuna.create_study(
         direction=tuning_cfg["direction"],
         sampler=optuna.samplers.TPESampler(seed=cfg["data"]["random_state"]),
     )
-    # suppress Optuna's verbose per-trial output (we log our own summary)
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study.optimize(objective, n_trials=tuning_cfg["n_trials"])
 
-    logger.info(
-        "Best trial: ROC-AUC = {auc:.4f}",
-        auc=study.best_value,
-    )
+    logger.info("Best trial: ROC-AUC = {auc:.4f}", auc=study.best_value)
     logger.info("Best params: {params}", params=study.best_params)
 
-    # ── Step 9: Train final XGBoost with best params ───────────────────────────
+    # ── Final XGBoost with best params ────────────────────────────────────────
     best_params = study.best_params
     best_params["scale_pos_weight"] = (y_train == 0).sum() / (y_train == 1).sum()
     best_params["random_state"] = cfg["data"]["random_state"]
@@ -237,21 +195,15 @@ def train_credit_risk() -> None:
 
         mlflow.log_params(best_params)
         mlflow.log_metrics(metrics["scalar_metrics"])
-        # Log the Optuna study's best value as a summary param
         mlflow.log_param("optuna_n_trials", tuning_cfg["n_trials"])
         mlflow.log_metric("optuna_best_auc", study.best_value)
         mlflow.xgboost.log_model(xgb_model, "model")
 
-        # Register model in MLflow Model Registry
         model_uri = f"runs:/{mlflow.active_run().info.run_id}/model"
         mlflow.register_model(model_uri, cfg["mlflow"]["model_name"])
 
-        logger.info(
-            "XGBoost tuned — ROC-AUC: {auc:.4f}",
-            auc=metrics["scalar_metrics"]["roc_auc"],
-        )
+        logger.info("XGBoost tuned — ROC-AUC: {auc:.4f}", auc=metrics["scalar_metrics"]["roc_auc"])
 
-        # Save the model to disk as well (for direct loading without MLflow)
         import joblib
         model_path = str(PROJECT_ROOT / "models" / "credit_risk" / "xgboost_model.joblib")
         Path(model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -260,7 +212,6 @@ def train_credit_risk() -> None:
 
         save_evaluation_report(metrics, "credit_risk")
 
-    # SHAP analysis — run outside the MLflow context to avoid artifact logging overhead
     logger.info("Running SHAP analysis for credit risk...")
     run_shap_analysis(
         model=xgb_model,
@@ -276,29 +227,26 @@ def train_credit_risk() -> None:
 def train_network_intrusion() -> None:
     """
     Full training pipeline for the network intrusion detection domain.
-    Structure mirrors train_credit_risk() but handles NSL-KDD specifics:
-      - Pre-split train/test files
-      - String label binarization
-      - Mixed categorical + numeric features
+
+    Mirrors train_credit_risk() but handles NSL-KDD specifics:
+    pre-split train/test files, string label binarization, and
+    mixed categorical + numeric features.
     """
     cfg = load_config("network_intrusion")
 
-    # ── Step 1: Load raw data ──────────────────────────────────────────────────
+    # ── Load and preprocess ───────────────────────────────────────────────────
     train_df, test_df = load_network_intrusion(cfg)
 
-    # ── Step 2: Drop metadata column ──────────────────────────────────────────
     for col in cfg["features"].get("drop_columns", []):
         for df in [train_df, test_df]:
             if col in df.columns:
                 df.drop(columns=[col], inplace=True)
 
-    # ── Step 3: Binarize labels ───────────────────────────────────────────────
     target_col = cfg["data"]["target_column"]
     label_map = cfg["features"]["binary_label_map"]
     y_train = binarize_labels(train_df[target_col], label_map)
     y_test = binarize_labels(test_df[target_col], label_map)
 
-    # ── Step 4: Validate ──────────────────────────────────────────────────────
     numeric_features = cfg["features"]["numeric_features"]
     categorical_features = cfg["features"]["categorical_features"]
     all_features = numeric_features + categorical_features
@@ -310,11 +258,10 @@ def train_network_intrusion() -> None:
         domain="network_intrusion",
     )
 
-    # ── Step 5: Feature matrix ────────────────────────────────────────────────
     X_train = train_df[all_features]
     X_test = test_df[all_features]
 
-    # ── Step 6: Feature engineering pipeline ──────────────────────────────────
+    # ── Feature engineering (fit on train only) ───────────────────────────────
     pipeline = build_network_pipeline(numeric_features, categorical_features)
     X_train_proc = pipeline.fit_transform(X_train)
     X_test_proc = pipeline.transform(X_test)
@@ -326,13 +273,13 @@ def train_network_intrusion() -> None:
     pipeline_path = str(PROJECT_ROOT / "models" / "network_intrusion" / "preprocessing_pipeline.joblib")
     save_pipeline(pipeline, pipeline_path)
 
-    # ── Step 7: MLflow setup ──────────────────────────────────────────────────
+    # ── MLflow setup ──────────────────────────────────────────────────────────
     mlruns_path = PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]
     mlruns_path.mkdir(exist_ok=True)
-    mlflow.set_tracking_uri(mlruns_path.as_uri())  # file:///C:/... — required on Windows
+    mlflow.set_tracking_uri(mlruns_path.as_uri())
     mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
 
-    # ── Step 8: Baseline ──────────────────────────────────────────────────────
+    # ── Baseline: Logistic Regression ─────────────────────────────────────────
     logger.info("Training baseline Logistic Regression model...")
     with mlflow.start_run(run_name="baseline_logistic_regression"):
         baseline_params = cfg["model"]["baseline"]["params"]
@@ -351,7 +298,7 @@ def train_network_intrusion() -> None:
         mlflow.log_metrics(baseline_metrics["scalar_metrics"])
         mlflow.sklearn.log_model(baseline_model, "model")
 
-    # ── Step 9: Optuna tuning ─────────────────────────────────────────────────
+    # ── Optuna hyperparameter search ──────────────────────────────────────────
     tuning_cfg = cfg["tuning"]
     ss = tuning_cfg["search_space"]
 
@@ -378,7 +325,7 @@ def train_network_intrusion() -> None:
     study.optimize(objective, n_trials=tuning_cfg["n_trials"])
     logger.info("Best trial: ROC-AUC = {auc:.4f}", auc=study.best_value)
 
-    # ── Step 10: Final XGBoost ─────────────────────────────────────────────────
+    # ── Final XGBoost with best params ────────────────────────────────────────
     best_params = {**study.best_params, "random_state": cfg["data"]["random_state"]}
 
     with mlflow.start_run(run_name="xgboost_tuned"):

@@ -1,15 +1,8 @@
 """
-Prediction module.
+Inference module — load trained models and run predictions on single records.
 
-This module is the inference path: given raw input data, run it through the
-preprocessing pipeline and return a prediction with a confidence score.
-
-It is used by:
-  - The FastAPI endpoint (real-time single-record prediction)
-  - The Streamlit frontend (via the API)
-
-Design: load model and pipeline once on startup, reuse for every request.
-This avoids the 200ms+ overhead of loading a model file on every request.
+Models and pipelines are loaded once at module import time and cached for the
+lifetime of the process to avoid per-request disk I/O overhead.
 """
 
 from pathlib import Path
@@ -26,19 +19,12 @@ logger = get_logger(__name__)
 
 PROJECT_ROOT = get_project_root()
 
-# Module-level cache: models are loaded once when this module is imported.
-# The dict maps domain name → (model, pipeline, feature_names).
 _model_cache: dict[str, tuple] = {}
 
 
 def load_model_and_pipeline(domain: str) -> tuple:
     """
     Load (or retrieve from cache) the model and preprocessing pipeline for a domain.
-
-    Why cache?
-      Loading a joblib file involves disk I/O and deserialization — typically 50-200ms.
-      For an API serving hundreds of requests per second, doing this per-request would
-      be unacceptable. The cache loads once and serves all subsequent requests instantly.
 
     Args:
         domain: "credit_risk" or "network_intrusion"
@@ -50,7 +36,6 @@ def load_model_and_pipeline(domain: str) -> tuple:
         return _model_cache[domain]
 
     model_dir = PROJECT_ROOT / "models" / domain
-
     model_path = model_dir / "xgboost_model.joblib"
     pipeline_path = model_dir / "preprocessing_pipeline.joblib"
 
@@ -75,8 +60,6 @@ def load_model_and_pipeline(domain: str) -> tuple:
     if domain == "credit_risk":
         feature_names = cfg["features"]["numeric_features"]
     else:
-        # For network intrusion, feature names include one-hot expanded categoricals.
-        # We return the pre-encoding names here; the pipeline handles expansion.
         feature_names = (
             cfg["features"]["numeric_features"] +
             cfg["features"]["categorical_features"]
@@ -94,38 +77,23 @@ def predict_single(domain: str, input_data: dict[str, Any]) -> dict[str, Any]:
     Args:
         domain: "credit_risk" or "network_intrusion"
         input_data: Dict mapping feature names to their values.
-                    Example: {"age": 35, "DebtRatio": 0.21, ...}
 
     Returns:
-        {
-          "prediction": 0 or 1,
-          "probability": float (0.0 to 1.0),
-          "risk_label": "Low Risk" / "High Risk",
-          "domain": str
-        }
+        Dict with prediction (0/1), probability, risk_label, domain, threshold_used.
     """
     model, pipeline, feature_names = load_model_and_pipeline(domain)
 
-    # Convert the input dict to a single-row DataFrame.
-    # The pipeline expects a DataFrame with named columns — not a raw array.
     input_df = pd.DataFrame([input_data])
 
-    # Ensure all expected feature columns are present.
-    # Fill missing features with NaN — the imputer in the pipeline handles them.
     for col in feature_names:
         if col not in input_df.columns:
             input_df[col] = np.nan
 
-    # Keep only the feature columns in the correct order
     input_df = input_df[feature_names]
 
-    # Apply the preprocessing pipeline (same transforms as during training)
     X_processed = pipeline.transform(input_df)
-
-    # Get probability of positive class (default=1 or attack=1)
     probability = float(model.predict_proba(X_processed)[0, 1])
 
-    # Load optimal threshold from evaluation report if available
     threshold = _get_optimal_threshold(domain)
     prediction = int(probability >= threshold)
 
@@ -144,10 +112,7 @@ def predict_single(domain: str, input_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _get_optimal_threshold(domain: str) -> float:
-    """
-    Read the optimal decision threshold from the saved evaluation report.
-    Falls back to 0.5 if the report doesn't exist yet.
-    """
+    """Read the optimal decision threshold from the evaluation report. Defaults to 0.5."""
     report_path = PROJECT_ROOT / "models" / domain / "evaluation_report.json"
     if report_path.exists():
         import json

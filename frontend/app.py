@@ -1,29 +1,4 @@
-"""
-Streamlit Dashboard — Intelligent Risk Analytics Platform.
-
-What this dashboard provides:
-  1. Interactive prediction forms for both domains
-  2. Model performance metrics and evaluation charts
-  3. SHAP explainability visualizations
-  4. Side-by-side model comparison
-
-Why Streamlit?
-  Streamlit lets you build a data app in pure Python — no HTML/CSS/JavaScript needed.
-  Every time the user changes a widget (slider, dropdown), Streamlit re-runs the
-  script from top to bottom and re-renders the page.
-  This "reactive" model is perfect for ML demos: you adjust an input and instantly
-  see the prediction change.
-
-  For a portfolio project, Streamlit demonstrates:
-    - You can build end-to-end applications (not just notebooks)
-    - You understand how to present model outputs to non-technical users
-    - You can connect a frontend to a backend API
-
-Architecture:
-  This Streamlit app calls the FastAPI backend at API_URL.
-  It does NOT directly import the model — that's intentional.
-  In a real deployment, the frontend and backend are separate services.
-"""
+"""Streamlit dashboard for the Intelligent Risk Analytics Platform."""
 
 import json
 from pathlib import Path
@@ -33,16 +8,10 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-# In Docker, this should be the API container's address.
-# Locally, it points to localhost.
 API_URL = "http://localhost:8000"
-
-# Path to saved evaluation reports (for metrics display)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Risk Analytics Platform",
     page_icon="🛡️",
@@ -50,7 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Sidebar navigation ────────────────────────────────────────────────────────
 st.sidebar.title("🛡️ Risk Analytics Platform")
 st.sidebar.markdown("---")
 page = st.sidebar.radio(
@@ -69,8 +37,6 @@ st.sidebar.markdown(
 )
 
 
-# ── Helper functions ──────────────────────────────────────────────────────────
-
 def check_api_health() -> dict:
     """Check if the FastAPI backend is running."""
     try:
@@ -81,7 +47,7 @@ def check_api_health() -> dict:
 
 
 def load_evaluation_report(domain: str) -> dict | None:
-    """Load evaluation report JSON from disk (or return None if not found)."""
+    """Load evaluation report JSON from disk."""
     report_path = PROJECT_ROOT / "models" / domain / "evaluation_report.json"
     if report_path.exists():
         with open(report_path) as f:
@@ -110,7 +76,6 @@ def predict(endpoint: str, payload: dict) -> dict | None:
         return None
 
 
-# ── API Status Banner ─────────────────────────────────────────────────────────
 health = check_api_health()
 if health["status"] == "healthy":
     models_ready = health.get("models_ready", False)
@@ -121,8 +86,6 @@ if health["status"] == "healthy":
 else:
     st.sidebar.error("❌ API Offline")
 
-
-# ── Pages ─────────────────────────────────────────────────────────────────────
 
 if page == "🏠 Overview":
     st.title("🛡️ Intelligent Risk Analytics Platform")
@@ -139,10 +102,10 @@ if page == "🏠 Overview":
         st.subheader("💳 Credit Risk")
         st.markdown(
             """
-            **Dataset**: Give Me Some Credit (Kaggle)
-            **Task**: Predict probability of loan default
+            **Dataset**: UCI Default of Credit Card Clients
+            **Task**: Predict probability of credit card default
             **Model**: XGBoost with Optuna hyperparameter tuning
-            **Key Challenge**: Severe class imbalance (~7% positive)
+            **Key Challenge**: Class imbalance (~22% positive class)
             """
         )
 
@@ -153,7 +116,7 @@ if page == "🏠 Overview":
             **Dataset**: NSL-KDD
             **Task**: Detect malicious vs. benign network traffic
             **Model**: XGBoost with Optuna hyperparameter tuning
-            **Key Challenge**: Mixed numeric + categorical features, multi-type attacks
+            **Key Challenge**: Mixed numeric + categorical features, novel attack types in test set
             """
         )
 
@@ -181,43 +144,55 @@ elif page == "💳 Credit Risk Prediction":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Financial Features")
-        revolving_util = st.slider(
-            "Revolving Utilization of Unsecured Lines",
-            min_value=0.0, max_value=1.5, value=0.3, step=0.01,
-            help="Total credit card balance / total credit limit. Above 1.0 means over-limit.",
+        st.subheader("Account Details")
+        limit_bal = st.number_input("Credit Limit (NTD)", min_value=0.0, value=200000.0, step=10000.0)
+        age = st.slider("Age", min_value=18, max_value=100, value=35)
+        sex = st.selectbox("Gender", options=[1, 2], format_func=lambda x: "Male" if x == 1 else "Female")
+        education = st.selectbox(
+            "Education",
+            options=[1, 2, 3, 4],
+            format_func=lambda x: {1: "Graduate School", 2: "University", 3: "High School", 4: "Other"}[x],
         )
-        age = st.slider("Age", min_value=18, max_value=100, value=45)
-        debt_ratio = st.slider(
-            "Debt Ratio",
-            min_value=0.0, max_value=5.0, value=0.35, step=0.01,
-            help="Monthly debt payments / gross monthly income.",
-        )
-        monthly_income = st.number_input(
-            "Monthly Income ($)", min_value=0.0, value=5000.0, step=100.0
+        marriage = st.selectbox(
+            "Marital Status",
+            options=[1, 2, 3],
+            format_func=lambda x: {1: "Married", 2: "Single", 3: "Other"}[x],
         )
 
     with col2:
-        st.subheader("Credit History")
-        times_30_59 = st.slider("Times 30-59 Days Past Due", 0, 20, 0)
-        times_60_89 = st.slider("Times 60-89 Days Past Due", 0, 20, 0)
-        times_90 = st.slider("Times 90+ Days Late", 0, 20, 0)
-        open_credit = st.slider("Open Credit Lines & Loans", 0, 50, 8)
-        real_estate_loans = st.slider("Real Estate Loans or Lines", 0, 20, 1)
-        dependents = st.slider("Number of Dependents", 0, 10, 0)
+        st.subheader("Repayment History")
+        pay_0 = st.slider("Repayment Status (Sep)", min_value=-2, max_value=9, value=-1,
+                          help="-2=no consumption, -1=paid duly, 1+ = months delayed")
+        pay_2 = st.slider("Repayment Status (Aug)", min_value=-2, max_value=9, value=-1)
+        pay_3 = st.slider("Repayment Status (Jul)", min_value=-2, max_value=9, value=-1)
+        bill_amt1 = st.number_input("Bill Amount Sep (NTD)", min_value=0.0, value=3913.0, step=100.0)
+        pay_amt1 = st.number_input("Payment Amount Sep (NTD)", min_value=0.0, value=0.0, step=100.0)
 
     if st.button("🔮 Predict Default Risk", type="primary"):
         payload = {
-            "RevolvingUtilizationOfUnsecuredLines": revolving_util,
-            "age": age,
-            "NumberOfTime30-59DaysPastDueNotWorse": times_30_59,
-            "DebtRatio": debt_ratio,
-            "MonthlyIncome": monthly_income,
-            "NumberOfOpenCreditLinesAndLoans": open_credit,
-            "NumberOfTimes90DaysLate": times_90,
-            "NumberRealEstateLoansOrLines": real_estate_loans,
-            "NumberOfTime60-89DaysPastDueNotWorse": times_60_89,
-            "NumberOfDependents": float(dependents),
+            "LIMIT_BAL": limit_bal,
+            "SEX": sex,
+            "EDUCATION": education,
+            "MARRIAGE": marriage,
+            "AGE": age,
+            "PAY_0": pay_0,
+            "PAY_2": pay_2,
+            "PAY_3": pay_3,
+            "PAY_4": -1,
+            "PAY_5": -1,
+            "PAY_6": -1,
+            "BILL_AMT1": bill_amt1,
+            "BILL_AMT2": 3102.0,
+            "BILL_AMT3": 689.0,
+            "BILL_AMT4": 0.0,
+            "BILL_AMT5": 0.0,
+            "BILL_AMT6": 0.0,
+            "PAY_AMT1": pay_amt1,
+            "PAY_AMT2": 689.0,
+            "PAY_AMT3": 0.0,
+            "PAY_AMT4": 0.0,
+            "PAY_AMT5": 0.0,
+            "PAY_AMT6": 0.0,
         }
 
         with st.spinner("Running prediction..."):
@@ -241,7 +216,6 @@ elif page == "💳 Credit Risk Prediction":
                     delta=f"Threshold: {result['threshold_used']}",
                 )
 
-            # Gauge chart
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=prob_pct,
@@ -353,7 +327,6 @@ elif page == "📊 Model Performance":
         with col_cm:
             st.subheader("Confusion Matrix")
             cm = report["confusion_matrix"]
-            labels = ["Negative", "Positive"]
             fig = px.imshow(
                 cm,
                 x=["Predicted Neg", "Predicted Pos"],
@@ -407,7 +380,6 @@ elif page == "🔍 SHAP Explainability":
         st.subheader("SHAP Summary Plot (Global Feature Importance)")
         st.image(str(shap_path), use_column_width=True)
 
-        # Show individual waterfall plots
         st.subheader("SHAP Waterfall Plots (Local Explanations)")
         st.markdown(
             "Each waterfall plot explains a single prediction: "
@@ -420,9 +392,6 @@ elif page == "🔍 SHAP Explainability":
     else:
         st.warning(
             f"SHAP plots not found for '{domain}'.\n\n"
-            "Run the SHAP analysis after training:\n"
-            "```python\n"
-            "from src.explainability.shap_analysis import run_shap_analysis\n"
-            "# (called automatically from train.py after training)\n"
-            "```"
+            "Run training first:\n"
+            "```\npython -m src.models.train --domain {domain}\n```"
         )

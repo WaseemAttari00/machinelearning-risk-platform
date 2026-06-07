@@ -1,49 +1,28 @@
-# ── Docker Compose Configuration ──────────────────────────────────────────────
-#
-# What is Docker Compose?
-#   Compose lets you define and run MULTIPLE containers as a single application.
-#   Instead of running 3 separate `docker run` commands, you write one YAML file
-#   and use `docker-compose up` to start everything together.
-#
-# Services defined here:
-#   - api       : FastAPI inference server (port 8000)
-#   - frontend  : Streamlit dashboard (port 8501)
-#   - mlflow    : MLflow tracking UI (port 5000)
-#
-# Key concepts:
-#   - volumes   : Mount a host directory into the container.
-#                 `./models:/app/models` means the host's models/ folder
-#                 appears at /app/models inside the container.
-#                 This way, you train locally and the Docker containers see the results.
-#   - networks  : Services on the same network can talk to each other by service name.
-#                 The frontend calls "http://api:8000" (not localhost:8000) because
-#                 inside Docker, containers are separate network namespaces.
-#   - depends_on: Ensures the API starts before the frontend tries to connect to it.
+# Services:
+#   api       — FastAPI inference server (port 8000)
+#   frontend  — Streamlit dashboard (port 8501)
+#   mlflow    — MLflow tracking UI (port 5000)
 #
 # Usage:
-#   docker-compose up --build        # Build images and start all services
-#   docker-compose up api            # Start only the API
-#   docker-compose down              # Stop all services
-#   docker-compose logs -f api       # Stream API logs
+#   docker-compose up --build        # build images and start all services
+#   docker-compose up api            # start only the API
+#   docker-compose down              # stop all services
+#   docker-compose logs -f api       # stream API logs
 
 version: "3.9"
 
 services:
 
-  # ── FastAPI prediction server ────────────────────────────────────────────────
   api:
     build:
-      context: ..                     # Build context = project root
+      context: ..
       dockerfile: docker/Dockerfile.api
     container_name: risk_api
     ports:
-      - "8000:8000"                   # host_port:container_port
+      - "8000:8000"
     volumes:
-      # Mount the models/ directory so the container can load trained models
       - ../models:/app/models
-      # Mount mlruns/ for MLflow artifact access
       - ../mlruns:/app/mlruns
-      # Mount configs/ so config changes don't require a rebuild
       - ../configs:/app/configs
     environment:
       - PYTHONPATH=/app
@@ -58,7 +37,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # ── Streamlit dashboard ───────────────────────────────────────────────────────
   frontend:
     build:
       context: ..
@@ -67,22 +45,20 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ../models:/app/models         # Read evaluation reports and SHAP plots
+      - ../models:/app/models
     environment:
-      # Inside Docker, "api" resolves to the API container's IP address.
-      # The Streamlit app uses this to call the prediction endpoints.
+      # "api" resolves to the API container via the shared Docker network
       - API_URL=http://api:8000
       - PYTHONPATH=/app
     depends_on:
       api:
-        condition: service_healthy    # Wait until API passes its health check
+        condition: service_healthy
     networks:
       - risk_network
     restart: unless-stopped
 
-  # ── MLflow tracking UI ────────────────────────────────────────────────────────
   mlflow:
-    image: python:3.11-slim           # Reuse the Python image; install mlflow inline
+    image: python:3.11-slim
     container_name: risk_mlflow
     command: >
       sh -c "pip install mlflow --quiet &&
@@ -90,14 +66,11 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ../mlruns:/mlruns             # Share the same mlruns/ directory
+      - ../mlruns:/mlruns
     networks:
       - risk_network
     restart: unless-stopped
 
-# ── Shared network ────────────────────────────────────────────────────────────
 networks:
   risk_network:
     driver: bridge
-    # "bridge" is Docker's default network driver for single-host networking.
-    # All services on this network can communicate using service names as hostnames.

@@ -1,27 +1,9 @@
 """
-Pydantic schemas for API request and response validation.
+Pydantic request/response schemas for the prediction API.
 
-What is Pydantic?
-  Pydantic is a data validation library that uses Python type annotations.
-  When a request comes into a FastAPI endpoint, Pydantic automatically:
-    1. Parses the JSON body
-    2. Validates each field against its type annotation
-    3. Raises a 422 Unprocessable Entity error with a clear message if validation fails
-    4. Returns a clean Python object if validation passes
-
-Why does this matter?
-  Without validation, your model could receive strings where it expects numbers,
-  or missing fields that cause a KeyError deep in the prediction code.
-  Pydantic makes the API "self-documenting" and "self-protecting" at the boundary.
-
-FastAPI uses these schemas to:
-  - Auto-generate the /docs Swagger UI (so users know exactly what to send)
-  - Validate incoming requests before they reach your business logic
-  - Serialize outgoing responses to JSON
-
-Dataset: UCI Default of Credit Card Clients
-  30,000 Taiwanese credit card holders, Sept 2005.
-  Features: credit limit, demographics, repayment history, bill & payment amounts.
+CreditRiskInput  — UCI Default of Credit Card Clients (30,000 records, Sept 2005)
+NetworkIntrusionInput — NSL-KDD network traffic features
+PredictionResponse — shared response schema for all prediction endpoints
 """
 
 from typing import Optional
@@ -30,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class CreditRiskInput(BaseModel):
     """
-    Input schema for credit risk prediction (UCI Credit Card Default dataset).
+    Input schema for credit risk prediction.
     All monetary values are in New Taiwan Dollar (NTD).
     """
 
@@ -86,8 +68,8 @@ class CreditRiskInput(BaseModel):
 
 class NetworkIntrusionInput(BaseModel):
     """
-    Input schema for network intrusion detection (NSL-KDD dataset).
-    Contains the core NSL-KDD features. Optional fields are imputed if missing.
+    Input schema for network intrusion detection.
+    Contains core NSL-KDD features; optional fields default to 0.
     """
     duration: float = Field(..., ge=0.0, description="Duration of connection in seconds.", example=0.0)
     protocol_type: str = Field(..., description="Network protocol: tcp, udp, or icmp.", example="tcp")
@@ -105,7 +87,6 @@ class NetworkIntrusionInput(BaseModel):
     serror_rate: float = Field(0.0, ge=0.0, le=1.0, description="% connections with SYN errors.", example=0.0)
     rerror_rate: float = Field(0.0, ge=0.0, le=1.0, description="% connections with REJ errors.", example=0.0)
 
-    # Optional fields with sensible defaults
     land: Optional[int] = Field(0, ge=0, le=1)
     wrong_fragment: Optional[float] = Field(0.0, ge=0.0)
     urgent: Optional[float] = Field(0.0, ge=0.0)

@@ -1,40 +1,39 @@
 # Data Directory
 
-This directory is excluded from git (see `.gitignore`).
-Download the datasets manually and place them here.
+Raw data files are excluded from git (see `.gitignore`). Download each dataset
+manually and place the files at the paths described below.
 
 ---
 
-## Credit Risk — Give Me Some Credit
+## Credit Risk — UCI Default of Credit Card Clients
 
-**Source**: Kaggle Competition
-**URL**: https://www.kaggle.com/c/GiveMeSomeCredit/data
+**Source**: UCI Machine Learning Repository
+**URL**: https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients
 
 ### Download Steps
-1. Create a free Kaggle account at kaggle.com
-2. Go to the competition page above
-3. Click "Download All" or download `cs-training.csv`
-4. Place the file at: `data/raw/credit_risk/cs-training.csv`
+1. Go to the URL above and click "Data Folder"
+2. Download `default of credit card clients.xls`
+3. Open in Excel or pandas and export as CSV
+4. Place the file at: `data/raw/credit_risk/credit_risk.csv`
 
 ### File Details
 | File | Size | Description |
 |---|---|---|
-| cs-training.csv | ~7 MB | 150,000 labeled records used for training |
+| credit_risk.csv | ~5 MB | 30,000 records, 25 columns |
 
 ### Column Descriptions
 | Column | Type | Description |
 |---|---|---|
-| SeriousDlqin2yrs | int (0/1) | **Target**: 1 = defaulted within 2 years |
-| RevolvingUtilizationOfUnsecuredLines | float | Credit utilization ratio |
-| age | int | Borrower age in years |
-| NumberOfTime30-59DaysPastDueNotWorse | int | Late payment count (30-59 days) |
-| DebtRatio | float | Monthly debt / monthly gross income |
-| MonthlyIncome | float | Monthly income (has ~20% missing) |
-| NumberOfOpenCreditLinesAndLoans | int | Open credit accounts |
-| NumberOfTimes90DaysLate | int | Severe late payment count |
-| NumberRealEstateLoansOrLines | int | Real estate loans |
-| NumberOfTime60-89DaysPastDueNotWorse | int | Late payment count (60-89 days) |
-| NumberOfDependents | float | Number of dependents (has ~3% missing) |
+| default | int (0/1) | **Target**: 1 = defaulted on payment next month |
+| LIMIT_BAL | float | Credit limit (New Taiwan Dollar) |
+| SEX | int | 1=male, 2=female |
+| EDUCATION | int | 1=graduate, 2=university, 3=high school, 4=other |
+| MARRIAGE | int | 1=married, 2=single, 3=other |
+| AGE | int | Age in years |
+| PAY_0–PAY_6 | int | Repayment status (months). -2=no consumption, -1=paid duly, 1–9=months delayed |
+| BILL_AMT1–6 | float | Bill statement amounts (Sep–Apr 2005) |
+| PAY_AMT1–6 | float | Previous payment amounts (Sep–Apr 2005) |
+| ID | int | Row identifier (dropped before training) |
 
 ---
 
@@ -44,23 +43,23 @@ Download the datasets manually and place them here.
 **URL**: https://www.unb.ca/cic/datasets/nsl.html
 
 ### Download Steps
-1. Go to the URL above
-2. Click "Download" → download `NSL-KDD.zip` (free, no login required)
-3. Extract the zip file
-4. Place these two files:
-   - `KDDTrain+.txt` → `data/raw/network_intrusion/KDDTrain+.txt`
-   - `KDDTest+.txt`  → `data/raw/network_intrusion/KDDTest+.txt`
+1. Go to the URL above and click "Download"
+2. Download `NSL-KDD.zip` (free, no login required)
+3. Extract the archive and locate the two data files
+4. Place them at:
+   - `data/raw/network_intrusion/KDDTrain+.txt`
+   - `data/raw/network_intrusion/KDDTest+.txt`
 
 ### File Details
 | File | Size | Records | Description |
 |---|---|---|---|
-| KDDTrain+.txt | ~18 MB | 125,973 | Training set (with difficulty level) |
-| KDDTest+.txt  | ~3.8 MB | 22,544 | Test set |
+| KDDTrain+.txt | ~18 MB | 125,973 | Training set |
+| KDDTest+.txt | ~3.8 MB | 22,544 | Test set (contains novel attack types not in train) |
 
 ### Feature Types
-- **41 features** total: numeric (continuous + binary) + categorical
-- **3 categorical**: protocol_type (tcp/udp/icmp), service (http/ftp/...), flag (SF/S0/...)
-- **Label**: "normal" or attack type (neptune, smurf, back, portsweep, ...) → binarized to 0/1
+- **41 features**: continuous numeric, binary numeric, and categorical
+- **3 categorical**: `protocol_type` (tcp/udp/icmp), `service` (http/ftp/...), `flag` (SF/S0/REJ/...)
+- **Label**: string attack type or "normal" → binarized to 0 (normal) / 1 (attack)
 
 ---
 
@@ -70,7 +69,7 @@ Download the datasets manually and place them here.
 data/
 ├── raw/
 │   ├── credit_risk/
-│   │   └── cs-training.csv
+│   │   └── credit_risk.csv
 │   └── network_intrusion/
 │       ├── KDDTrain+.txt
 │       └── KDDTest+.txt

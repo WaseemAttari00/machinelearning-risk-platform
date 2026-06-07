@@ -1,23 +1,10 @@
 """
-Model evaluation module.
+Model evaluation for binary classification.
 
-Computes a comprehensive suite of metrics for binary classification:
-  - Accuracy, Precision, Recall, F1, ROC-AUC
-  - Confusion matrix
-  - Classification report (per-class precision/recall/F1)
-  - Optimal threshold search (best F1 threshold)
-
-All results are returned as a structured dictionary so they can be:
-  - Logged to MLflow
-  - Saved as a JSON report
-  - Displayed in Streamlit
-
-Why so many metrics?
-  No single metric tells the whole story for imbalanced binary classification.
-  A model that always predicts "no default" achieves ~93% accuracy on the credit
-  risk dataset — but catches 0 actual defaults. You need Recall to catch this.
-  Precision and F1 balance the tradeoff between catching true positives and
-  avoiding false positives.
+Computes accuracy, precision, recall, F1, ROC-AUC, confusion matrix,
+classification report, optimal decision threshold, and feature importances.
+All results are returned as a structured dict suitable for MLflow logging,
+JSON persistence, and Streamlit display.
 """
 
 import json
@@ -57,31 +44,21 @@ def evaluate_model(
     Compute the full evaluation suite for a binary classifier.
 
     Args:
-        model: Any fitted sklearn-compatible model with predict_proba().
+        model: Fitted sklearn-compatible model with predict_proba().
         X_test: Preprocessed test feature matrix.
         y_test: True binary labels (0/1).
-        feature_names: Column names for X_test (used in reports).
+        feature_names: Column names for X_test.
         domain: "credit_risk" or "network_intrusion".
-        model_name: Human-readable name for logging and reporting.
+        model_name: Human-readable identifier for logging.
         threshold: Decision threshold (default 0.5).
-                   Predictions above this → positive class.
 
     Returns:
-        Dictionary with:
-          - scalar_metrics: flat dict suitable for MLflow.log_metrics()
-          - confusion_matrix: 2×2 list [[TN, FP], [FN, TP]]
-          - classification_report: full sklearn report as string
-          - optimal_threshold: threshold that maximizes F1 on test set
-          - feature_importance: dict of {feature_name: importance_score} if available
+        Dict with scalar_metrics, confusion_matrix, classification_report,
+        optimal_threshold, feature_importance, and sample counts.
     """
-    # Get probability scores for the positive class (class 1)
     y_prob = model.predict_proba(X_test)[:, 1]
-
-    # Apply the threshold to get binary predictions
     y_pred = (y_prob >= threshold).astype(int)
 
-    # ── Core metrics ──────────────────────────────────────────────────────────
-    # zero_division=0 means if a class has no predictions, return 0 instead of warning
     accuracy = accuracy_score(y_test, y_pred)
     precision = precision_score(y_test, y_pred, zero_division=0)
     recall = recall_score(y_test, y_pred, zero_division=0)
@@ -107,18 +84,13 @@ def evaluate_model(
         auc=roc_auc,
     )
 
-    # ── Confusion matrix ──────────────────────────────────────────────────────
     cm = confusion_matrix(y_test, y_pred)
-    # cm[0][0]=TN, cm[0][1]=FP, cm[1][0]=FN, cm[1][1]=TP
     tn, fp, fn, tp = cm.ravel()
     logger.info(
         "Confusion matrix — TN={tn}, FP={fp}, FN={fn}, TP={tp}",
         tn=tn, fp=fp, fn=fn, tp=tp,
     )
 
-    # ── Optimal threshold search ──────────────────────────────────────────────
-    # The default 0.5 threshold is rarely optimal for imbalanced problems.
-    # We sweep thresholds and find the one that maximizes F1 score.
     optimal_threshold, optimal_f1 = _find_optimal_threshold(y_test, y_prob)
     scalar_metrics["optimal_threshold"] = round(float(optimal_threshold), 3)
     scalar_metrics["optimal_f1"] = round(float(optimal_f1), 4)
@@ -128,18 +100,15 @@ def evaluate_model(
         f=optimal_f1,
     )
 
-    # ── Feature importance (tree models only) ─────────────────────────────────
     feature_importance = {}
     if hasattr(model, "feature_importances_"):
         importances = model.feature_importances_
         if len(importances) == len(feature_names):
             feature_importance = dict(zip(feature_names, importances.tolist()))
-            # Sort descending for easy reading
             feature_importance = dict(
                 sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
             )
 
-    # ── Full classification report ────────────────────────────────────────────
     cls_report = classification_report(y_test, y_pred, zero_division=0)
 
     return {
@@ -161,12 +130,7 @@ def _find_optimal_threshold(
     thresholds: np.ndarray = None,
 ) -> tuple[float, float]:
     """
-    Find the decision threshold that maximizes F1 score.
-
-    We sweep from 0.05 to 0.95 in steps of 0.01 and pick the threshold
-    with the highest F1. In production you might optimize for different
-    metrics depending on business requirements (e.g., maximize recall
-    if missing a fraud is worse than a false alarm).
+    Sweep thresholds from 0.05 to 0.95 and return the one that maximizes F1.
 
     Returns:
         (best_threshold, best_f1)
@@ -188,11 +152,7 @@ def _find_optimal_threshold(
 
 
 def save_evaluation_report(metrics: dict[str, Any], domain: str) -> None:
-    """
-    Save the evaluation report as a JSON file in models/<domain>/.
-
-    JSON is human-readable and easily loaded by Streamlit for display.
-    """
+    """Save the evaluation report as JSON to models/<domain>/evaluation_report.json."""
     report_path = PROJECT_ROOT / "models" / domain / "evaluation_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
 

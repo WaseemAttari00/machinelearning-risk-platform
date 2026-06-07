@@ -1,18 +1,4 @@
-"""
-Shared preprocessing utilities.
-
-This module contains functions that are domain-agnostic:
-  - train/test splitting
-  - saving and loading scikit-learn pipelines
-  - checking for fitted pipelines
-
-Domain-specific preprocessing (feature engineering, encoding, scaling) lives in
-src/features/credit_features.py and src/features/network_features.py.
-
-Why split it this way?
-  Shared utilities here, domain logic in features/. If you add a third domain
-  tomorrow, you reuse this file unchanged.
-"""
+"""Domain-agnostic preprocessing utilities: splitting, pipeline I/O."""
 
 from pathlib import Path
 from typing import Optional
@@ -39,22 +25,15 @@ def split_features_target(
     Args:
         df: Full DataFrame including target column.
         target_column: Name of the column to predict.
-        drop_columns: Additional columns to drop from features (e.g., ID columns).
+        drop_columns: Additional columns to exclude from features (e.g., ID columns).
 
     Returns:
         (X, y) — feature DataFrame and target Series.
-
-    Why drop_columns?
-      Some datasets contain columns that must not be used as features:
-        - Row index columns ("Unnamed: 0" from Kaggle CSVs)
-        - ID columns (customer ID uniquely identifies a row — model can't generalize)
-        - Post-event columns (information available only after the outcome occurs)
     """
     cols_to_drop = [target_column]
     if drop_columns:
         cols_to_drop.extend(drop_columns)
 
-    # Only drop columns that actually exist (avoid KeyError on optional columns)
     cols_to_drop = [c for c in cols_to_drop if c in df.columns]
 
     X = df.drop(columns=cols_to_drop)
@@ -88,12 +67,6 @@ def make_train_test_split(
 
     Returns:
         (X_train, X_test, y_train, y_test)
-
-    Why stratify=True?
-      Without stratification, random chance could put nearly all positive-class
-      examples into train and leave test with very few — making evaluation unreliable.
-      Stratification guarantees the class ratio is maintained in both splits.
-      This matters especially with imbalanced datasets (e.g., 7% default rate).
     """
     stratify_labels = y if stratify else None
 
@@ -123,17 +96,7 @@ def make_train_test_split(
 
 
 def save_pipeline(pipeline: Pipeline, path: str) -> None:
-    """
-    Serialize a fitted scikit-learn Pipeline to disk using joblib.
-
-    Why joblib instead of pickle?
-      joblib is optimized for large numpy arrays (the backbone of scikit-learn
-      objects). It compresses them more efficiently and loads faster.
-
-    Args:
-        pipeline: A fitted sklearn Pipeline.
-        path: Output path (e.g., "models/credit_risk/preprocessing_pipeline.joblib")
-    """
+    """Serialize a fitted sklearn Pipeline to disk using joblib."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipeline, output_path)
@@ -141,12 +104,7 @@ def save_pipeline(pipeline: Pipeline, path: str) -> None:
 
 
 def load_pipeline(path: str) -> Pipeline:
-    """
-    Load a previously saved sklearn Pipeline from disk.
-
-    This is used at inference time: the API loads the pipeline and calls
-    pipeline.transform(new_data) before passing it to the model.
-    """
+    """Load a previously saved sklearn Pipeline from disk."""
     if not Path(path).exists():
         raise FileNotFoundError(f"Pipeline not found at: {path}")
     pipeline = joblib.load(path)

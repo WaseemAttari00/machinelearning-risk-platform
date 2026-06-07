@@ -1,9 +1,4 @@
-"""
-Unit tests for feature engineering and model training components.
-
-These tests use synthetic data and simple models (not full XGBoost training)
-so they run in seconds rather than minutes.
-"""
+"""Unit tests for feature engineering and model evaluation components."""
 
 import numpy as np
 import pandas as pd
@@ -15,8 +10,6 @@ from src.features.network_features import binarize_labels, build_network_pipelin
 from src.models.evaluate import _find_optimal_threshold, evaluate_model
 
 
-# ── Credit feature engineering tests ─────────────────────────────────────────
-
 class TestOutlierClipper:
 
     def test_fit_learns_bounds(self):
@@ -26,20 +19,18 @@ class TestOutlierClipper:
         clipper.fit(X)
         assert "a" in clipper.clip_bounds_
         assert "b" in clipper.clip_bounds_
-        # 75th percentile of [1,2,3,100] is between 2 and 3
         assert clipper.clip_bounds_["a"] < 100
 
     def test_transform_clips_outliers(self):
         """transform() should cap values above the learned 99th percentile."""
         np.random.seed(42)
         X_train = pd.DataFrame({"a": np.random.normal(0, 1, 100)})
-        X_test = pd.DataFrame({"a": [0.0, 1.0, 999.0]})   # 999 is a clear outlier
+        X_test = pd.DataFrame({"a": [0.0, 1.0, 999.0]})
 
         clipper = OutlierClipper(upper_percentile=99)
         clipper.fit(X_train)
         X_transformed = clipper.transform(X_test)
 
-        # The 999 value should be clipped
         assert X_transformed["a"].max() < 999
 
     def test_transform_does_not_modify_input(self):
@@ -59,10 +50,10 @@ class TestCreditPipeline:
         np.random.seed(42)
         n = 200
         X = pd.DataFrame({
-            "RevolvingUtilizationOfUnsecuredLines": np.random.uniform(0, 1.5, n),
-            "age": np.random.randint(18, 80, n).astype(float),
-            "DebtRatio": np.random.uniform(0, 2, n),
-            "MonthlyIncome": np.where(np.random.random(n) < 0.05, np.nan, np.random.uniform(1000, 20000, n)),
+            "LIMIT_BAL": np.random.uniform(10000, 800000, n),
+            "AGE": np.random.randint(18, 80, n).astype(float),
+            "PAY_0": np.random.randint(-2, 4, n).astype(float),
+            "BILL_AMT1": np.where(np.random.random(n) < 0.05, np.nan, np.random.uniform(0, 50000, n)),
         })
         pipeline = build_credit_pipeline()
         X_transformed = pipeline.fit_transform(X)
@@ -78,8 +69,6 @@ class TestCreditPipeline:
         X_transformed = pipeline.fit_transform(X)
         assert not np.isnan(X_transformed).any()
 
-
-# ── Network feature engineering tests ────────────────────────────────────────
 
 class TestBinarizeLabels:
 
@@ -124,8 +113,6 @@ class TestNetworkPipeline:
         assert X_transformed.shape[1] == 5
 
 
-# ── Evaluation tests ──────────────────────────────────────────────────────────
-
 class TestEvaluation:
 
     def test_evaluate_model_returns_all_metrics(self):
@@ -157,7 +144,7 @@ class TestEvaluation:
         model = LogisticRegression(random_state=42)
         model.fit(X, y)
 
-        result = evaluate_model(model, X, y, ["f1","f2","f3","f4","f5"], "test", "lr")
+        result = evaluate_model(model, X, y, ["f1", "f2", "f3", "f4", "f5"], "test", "lr")
         auc = result["scalar_metrics"]["roc_auc"]
         assert 0.0 <= auc <= 1.0
 
