@@ -76,21 +76,23 @@ streamlit run frontend/app.py
 
 ## Model Results
 
-### Credit Risk (Give Me Some Credit)
+### Credit Risk (UCI Default of Credit Card Clients — 30,000 records)
 
 | Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|---|
-| Logistic Regression (baseline) | — | — | — | — | — |
-| XGBoost | — | — | — | — | — |
+| Logistic Regression (baseline) | 0.6745 | 0.3645 | 0.6345 | 0.4630 | 0.7128 |
+| **XGBoost + Optuna (tuned)** | **0.7663** | **0.4781** | **0.6164** | **0.5385** | **0.7811** |
 
-### Network Intrusion (NSL-KDD)
+Optimal decision threshold: **0.530** (tuned for F1, not default 0.5)
+
+### Network Intrusion (NSL-KDD — 125,973 train / 22,544 test)
 
 | Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|---|
-| Logistic Regression (baseline) | — | — | — | — | — |
-| XGBoost | — | — | — | — | — |
+| Logistic Regression (baseline) | 0.7543 | 0.9169 | 0.6251 | 0.7434 | 0.7917 |
+| **XGBoost + Optuna (tuned)** | **0.7925** | **0.9687** | **0.6566** | **0.7827** | **0.9731** |
 
-*Results will be filled in after training is complete.*
+Optimal decision threshold: **0.050** (test set has novel attack types → low threshold maximizes recall)
 
 ---
 

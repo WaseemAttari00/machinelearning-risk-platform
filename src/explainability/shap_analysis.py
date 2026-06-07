@@ -2,29 +2,24 @@
 SHAP (SHapley Additive exPlanations) analysis module.
 
 What is SHAP?
-  SHAP is a method for explaining the output of any machine learning model.
-  It answers the question: "How much did each feature contribute to THIS prediction?"
+  SHAP answers: "How much did each feature contribute to THIS prediction?"
+  The math comes from cooperative game theory — Shapley values fairly distribute
+  the 'credit' (prediction contribution) among all features.
 
-  The math behind it comes from game theory — Shapley values fairly distribute the
-  "credit" (prediction contribution) among all features by considering every possible
-  combination of features.
+Why SHAP instead of built-in feature importances?
+  Built-in importances (model.feature_importances_) tell you which features are
+  used most across all predictions, but NOT:
+    - Direction: does higher PAY_0 → more risk or less?
+    - Local: why did THIS specific customer get flagged?
+    - Reliable importance for correlated features
 
-Why use SHAP instead of just feature importances?
-  Built-in feature importances (model.feature_importances_) tell you which features
-  are most used across all predictions, but they:
-    - Don't tell you the direction of the effect (does higher age → more risk or less?)
-    - Don't tell you how each feature affected a specific prediction
-    - Can be misleading for correlated features
-
-  SHAP gives you:
-    - Global importance: which features matter most overall
-    - Direction: does high DebtRatio push predictions up or down?
-    - Local explanations: why did THIS specific customer get a high-risk prediction?
+  SHAP gives you all three. It is also model-agnostic — same API for XGBoost,
+  Random Forests, and neural networks.
 
 Why does this matter for interviews?
-  "Explainability" is now a compliance requirement in finance (GDPR Article 22) and
-  healthcare. Being able to explain a model's decision to a non-technical stakeholder
-  is a real job skill. Interviewers will ask about this.
+  Explainability is now a legal requirement in finance (GDPR Article 22) and
+  healthcare. Being able to explain a decision to a non-technical stakeholder
+  (loan officer, security analyst) is a real job skill.
 """
 
 from pathlib import Path
@@ -34,7 +29,6 @@ import matplotlib
 matplotlib.use("Agg")   # Non-interactive backend — required for server-side rendering
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import shap
 
 from src.utils.config import get_project_root
@@ -50,32 +44,32 @@ def compute_shap_values(
     X: np.ndarray,
     feature_names: list[str],
     sample_size: Optional[int] = 1000,
-) -> shap.Explanation:
+) -> tuple:
     """
     Compute SHAP values for a dataset using TreeExplainer.
 
-    Args:
-        model: A fitted tree-based model (XGBoost, Random Forest, etc.)
-        X: Preprocessed feature matrix (numpy array).
-        feature_names: Column names for the features.
-        sample_size: Subsample size for speed. SHAP is O(n) but 1000 samples
-                     is enough for reliable global summaries.
-
-    Returns:
-        shap.Explanation object containing SHAP values and base values.
-
     Why TreeExplainer?
       SHAP has model-specific explainers:
-        - TreeExplainer  : for tree-based models (XGBoost, LightGBM, RF)
+        - TreeExplainer  : for tree-based models (XGBoost, LightGBM, RF) — exact, fast
         - LinearExplainer: for linear models (Logistic Regression)
-        - KernelExplainer: model-agnostic (much slower)
+        - KernelExplainer: model-agnostic, ~100x slower
 
-      TreeExplainer is ~100x faster than KernelExplainer because it exploits
-      the tree structure to compute exact SHAP values efficiently.
-      Since we use XGBoost, we always use TreeExplainer.
+      We always use TreeExplainer since our primary model is XGBoost.
+
+    Args:
+        model: A fitted tree-based model (XGBoost).
+        X: Preprocessed feature matrix (numpy array).
+        feature_names: Column names for the features.
+        sample_size: Subsample size. 1000 samples gives reliable global summaries
+                     while keeping computation fast (SHAP is O(n·depth)).
+
+    Returns:
+        (shap_values_array, X_sample, explainer)
+        - shap_values_array: 2D numpy array of shape (n_samples, n_features)
+        - X_sample: The subsampled input data
+        - explainer: The fitted TreeExplainer (needed for waterfall plots)
     """
     if sample_size and len(X) > sample_size:
-        # Reproducible random subsample
         rng = np.random.default_rng(42)
         idx = rng.choice(len(X), size=sample_size, replace=False)
         X_sample = X[idx]
@@ -89,21 +83,25 @@ def compute_shap_values(
 
     logger.info("Computing SHAP values with TreeExplainer...")
     explainer = shap.TreeExplainer(model)
-    shap_values = explainer(X_sample)
 
-    # Attach feature names so plots are labeled correctly
-    if hasattr(shap_values, "feature_names"):
-        shap_values.feature_names = feature_names
+    # In SHAP 0.45+, calling explainer(X) returns an Explanation object.
+    # .values gives the raw 2D shap value array.
+    # For binary classification, XGBoost returns values for class 1 (positive class).
+    shap_explanation = explainer(X_sample)
 
-    logger.info(
-        "SHAP values computed — shape: {shape}",
-        shape=shap_values.values.shape,
-    )
-    return shap_values, X_sample
+    # shap_explanation.values can be 3D for multi-output models: (n, features, classes)
+    # For binary XGBoost with tree_method="hist", it's (n, features) for the positive class.
+    sv = shap_explanation.values
+    if sv.ndim == 3:
+        # Take the positive class (index 1) if 3D
+        sv = sv[:, :, 1]
+
+    logger.info("SHAP values computed — shape: {shape}", shape=sv.shape)
+    return sv, X_sample, explainer
 
 
 def plot_summary(
-    shap_values: shap.Explanation,
+    shap_values: np.ndarray,
     X_sample: np.ndarray,
     feature_names: list[str],
     domain: str,
@@ -113,33 +111,24 @@ def plot_summary(
     """
     Generate a SHAP beeswarm summary plot.
 
-    What does the summary plot show?
-      - Each row is one feature
-      - Each dot is one prediction (one row of data)
-      - X-axis: SHAP value (positive = pushes prediction toward class 1,
-                            negative = pushes toward class 0)
+    How to read this plot:
+      - Each row = one feature (sorted by mean |SHAP| — most important at top)
+      - Each dot = one prediction (one data sample)
+      - X-axis = SHAP value: positive → pushes prediction toward class 1 (risky)
+                              negative → pushes toward class 0 (safe)
       - Color: red = high feature value, blue = low feature value
-      - Features are sorted top-to-bottom by mean absolute SHAP value
 
-    How to read it:
-      "High RevolvingUtilization (red dots) pushes predictions toward default (positive SHAP).
-       Low RevolvingUtilization (blue dots) reduces default probability."
+    Example interpretation:
+      "High PAY_0 (red dots) pushes predictions strongly toward Default.
+       Low PAY_0 (blue dots) reduces default probability."
 
-    Args:
-        shap_values: SHAP Explanation object from compute_shap_values.
-        X_sample: The data subset used for SHAP computation.
-        feature_names: Feature column names.
-        domain: For save path and title.
-        max_display: Number of top features to show.
-        save: If True, save the plot to models/<domain>/shap_summary.png.
-
-    Returns:
-        matplotlib Figure object.
+    This plot is the first thing to show in a portfolio demo. It instantly
+    communicates both importance AND direction in one visualization.
     """
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, _ = plt.subplots(figsize=(10, 8))
 
     shap.summary_plot(
-        shap_values.values,
+        shap_values,
         X_sample,
         feature_names=feature_names,
         max_display=max_display,
@@ -147,7 +136,8 @@ def plot_summary(
         plot_size=None,
     )
 
-    plt.title(f"SHAP Feature Importance — {domain.replace('_', ' ').title()}", fontsize=14)
+    title = domain.replace("_", " ").title()
+    plt.title(f"SHAP Feature Importance — {title}", fontsize=14, pad=15)
     plt.tight_layout()
 
     if save:
@@ -160,7 +150,7 @@ def plot_summary(
 
 
 def plot_waterfall(
-    model,
+    explainer,
     X_single: np.ndarray,
     feature_names: list[str],
     domain: str,
@@ -170,35 +160,36 @@ def plot_waterfall(
     """
     Generate a SHAP waterfall plot for a single prediction.
 
-    What does the waterfall plot show?
-      It explains one specific prediction by showing:
-        - The baseline value (average model output across all training data)
-        - Each feature's contribution: how much it pushed the prediction up or down
-        - The final prediction value
+    The waterfall plot is the "local explanation":
+      - Starts at the base value (average model output across all training data)
+      - Each bar shows how much one feature pushed the prediction up or down
+      - Ends at the final prediction for this specific sample
 
-    This is the "local explanation" — useful for explaining to a loan officer
-    WHY the model classified a specific applicant as high risk.
+    Use case: "Mr. Smith was flagged as high risk. The model says his PAY_0=3
+    (3 months late) contributed +0.42 to the log-odds. His LIMIT_BAL was low,
+    contributing +0.18. His age contributed -0.05 (slightly protective)."
 
-    Args:
-        model: Fitted model.
-        X_single: Single-row feature matrix (1 × n_features array).
-        feature_names: Feature names.
-        domain: For save path.
-        sample_index: Index label for the saved filename.
-        save: If True, save the plot.
-
-    Returns:
-        matplotlib Figure object.
+    This is what you show a loan officer or security analyst.
     """
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer(X_single)
+    # Compute SHAP for this single sample
+    shap_explanation = explainer(X_single)
+    sv = shap_explanation.values
+    if sv.ndim == 3:
+        sv = sv[:, :, 1]
 
-    # Attach feature names
-    shap_values.feature_names = feature_names
+    # Rebuild Explanation object with correct feature names for the waterfall plot
+    exp_single = shap.Explanation(
+        values=sv[0],
+        base_values=float(shap_explanation.base_values[0])
+            if hasattr(shap_explanation.base_values, "__len__")
+            else float(shap_explanation.base_values),
+        data=X_single[0],
+        feature_names=feature_names,
+    )
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.waterfall_plot(shap_values[0], max_display=15, show=False)
-    plt.title(f"SHAP Explanation — Sample {sample_index}", fontsize=13)
+    fig, _ = plt.subplots(figsize=(10, 6))
+    shap.plots.waterfall(exp_single, max_display=15, show=False)
+    plt.title(f"SHAP Local Explanation — Sample {sample_index}", fontsize=12, pad=10)
     plt.tight_layout()
 
     if save:
@@ -218,27 +209,29 @@ def run_shap_analysis(
     sample_size: int = 1000,
 ) -> None:
     """
-    Run the full SHAP analysis pipeline: compute values + generate all plots.
-
-    Called from train.py after model training is complete.
+    Run the full SHAP analysis: compute values → summary plot → 3 waterfall plots.
+    Called from train.py after training is complete.
     """
     logger.info("Starting SHAP analysis for domain: {domain}", domain=domain)
 
-    shap_values, X_sample = compute_shap_values(
+    shap_values, X_sample, explainer = compute_shap_values(
         model, X_test, feature_names, sample_size
     )
 
-    # Summary plot (global feature importance)
+    # Global: beeswarm summary
+    plt.close("all")
     plot_summary(shap_values, X_sample, feature_names, domain)
+    plt.close("all")
 
-    # Waterfall plot for the first 3 test samples (local explanations)
+    # Local: waterfall for first 3 samples
     for i in range(min(3, len(X_sample))):
         plot_waterfall(
-            model,
+            explainer,
             X_sample[i:i+1],
             feature_names,
             domain,
             sample_index=i,
         )
+        plt.close("all")
 
     logger.info("SHAP analysis complete for domain: {domain}", domain=domain)

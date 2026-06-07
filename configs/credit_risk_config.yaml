@@ -1,48 +1,62 @@
 # ── Credit Risk Domain Configuration ─────────────────────────────────────────
-# This file controls everything about the credit risk pipeline.
-# Changing a value here changes behavior everywhere — no code edits needed.
+# Dataset: UCI Default of Credit Card Clients
+# Source: https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients
+# Records: 30,000 | Positive class: ~22% (default=1)
+# Features: Credit limit, demographics, repayment history, bill amounts, payments
 
 domain: credit_risk
-description: "Predict probability of loan default (binary classification)"
+description: "Predict probability of credit card default next month (binary classification)"
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 data:
-  raw_path: "data/raw/credit_risk/cs-training.csv"
+  raw_path: "data/raw/credit_risk/credit_risk.csv"
   processed_train_path: "data/processed/credit_risk/train.parquet"
   processed_test_path: "data/processed/credit_risk/test.parquet"
-  target_column: "SeriousDlqin2yrs"
+  target_column: "default"
   test_size: 0.2
   random_state: 42
 
 # ── Features ─────────────────────────────────────────────────────────────────
 features:
-  # These are the raw column names from the original CSV
+  # All numeric (ordinal-encoded categoricals treated as numeric for XGBoost)
+  # XGBoost handles ordinal integers well without one-hot encoding.
   numeric_features:
-    - RevolvingUtilizationOfUnsecuredLines
-    - age
-    - NumberOfTime30-59DaysPastDueNotWorse
-    - DebtRatio
-    - MonthlyIncome
-    - NumberOfOpenCreditLinesAndLoans
-    - NumberOfTimes90DaysLate
-    - NumberRealEstateLoansOrLines
-    - NumberOfTime60-89DaysPastDueNotWorse
-    - NumberOfDependents
-  categorical_features: []    # No categorical features in this dataset
+    - LIMIT_BAL      # Credit limit amount (NT dollar)
+    - SEX            # 1=male, 2=female
+    - EDUCATION      # 1=grad school, 2=university, 3=high school, 4=other
+    - MARRIAGE       # 1=married, 2=single, 3=other
+    - AGE            # Age in years
+    - PAY_0          # Repayment status Sep 2005 (-2=no consumption, -1=pay duly, 1-9=delay months)
+    - PAY_2          # Repayment status Aug 2005
+    - PAY_3          # Repayment status Jul 2005
+    - PAY_4          # Repayment status Jun 2005
+    - PAY_5          # Repayment status May 2005
+    - PAY_6          # Repayment status Apr 2005
+    - BILL_AMT1      # Bill statement Sep 2005 (NT dollar)
+    - BILL_AMT2      # Bill statement Aug 2005
+    - BILL_AMT3      # Bill statement Jul 2005
+    - BILL_AMT4      # Bill statement Jun 2005
+    - BILL_AMT5      # Bill statement May 2005
+    - BILL_AMT6      # Bill statement Apr 2005
+    - PAY_AMT1       # Previous payment Sep 2005 (NT dollar)
+    - PAY_AMT2       # Previous payment Aug 2005
+    - PAY_AMT3       # Previous payment Jul 2005
+    - PAY_AMT4       # Previous payment Jun 2005
+    - PAY_AMT5       # Previous payment May 2005
+    - PAY_AMT6       # Previous payment Apr 2005
+
+  categorical_features: []  # No separate categorical handling needed — XGBoost handles ordinals
+
   drop_columns:
-    - Unnamed: 0              # Row index column from Kaggle CSV
+    - ID             # Customer identifier — not a predictive feature
 
-  # Imputation strategy for missing values
   imputation:
-    MonthlyIncome: median
-    NumberOfDependents: median
+    strategy: median # No missing values in this dataset but defensive default
 
-  # Outlier clipping: clip values above this percentile
   outlier_clip_percentile: 99
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 model:
-  # Baseline model (always train this first to have a reference point)
   baseline:
     type: logistic_regression
     params:
@@ -50,7 +64,6 @@ model:
       class_weight: balanced
       random_state: 42
 
-  # Primary model
   primary:
     type: xgboost
     params:
@@ -59,18 +72,17 @@ model:
       learning_rate: 0.05
       subsample: 0.8
       colsample_bytree: 0.8
-      scale_pos_weight: 13    # Approx ratio of negatives/positives for imbalance
+      scale_pos_weight: 3.5   # ~23364/6636 ≈ 3.5 (negatives/positives)
       random_state: 42
       eval_metric: auc
       early_stopping_rounds: 20
 
 # ── Hyperparameter Tuning ─────────────────────────────────────────────────────
 tuning:
-  n_trials: 50               # Number of Optuna trials (increase for better results)
-  direction: maximize        # Maximize ROC-AUC
+  n_trials: 50
+  direction: maximize
   metric: roc_auc
   cv_folds: 5
-  # Search space — Optuna will sample from these ranges
   search_space:
     n_estimators: [100, 500]
     max_depth: [3, 9]
@@ -87,7 +99,6 @@ evaluation:
     - recall
     - f1
     - roc_auc
-  # Decision threshold tuning: evaluate these thresholds and pick best F1
   threshold_range: [0.1, 0.9]
   threshold_step: 0.05
   positive_class_label: "Default"
@@ -97,9 +108,9 @@ evaluation:
 mlflow:
   experiment_name: "credit_risk_prediction"
   model_name: "credit_risk_xgboost"
-  tracking_uri: "mlruns"     # Local filesystem tracking
+  tracking_uri: "mlruns"
 
 # ── SHAP ──────────────────────────────────────────────────────────────────────
 shap:
-  max_display_features: 15   # How many features to show in summary plot
-  sample_size: 1000          # Subsample for SHAP (full dataset can be slow)
+  max_display_features: 15
+  sample_size: 1000

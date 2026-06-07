@@ -51,6 +51,7 @@ from src.features.network_features import (
     get_feature_names_after_encoding,
 )
 from src.models.evaluate import evaluate_model, save_evaluation_report
+from src.explainability.shap_analysis import run_shap_analysis
 from src.utils.config import get_project_root, load_config
 from src.utils.logger import get_logger
 
@@ -120,7 +121,9 @@ def train_credit_risk() -> None:
     save_pipeline(pipeline, pipeline_path)
 
     # ── Step 6: Configure MLflow ───────────────────────────────────────────────
-    mlflow.set_tracking_uri(str(PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]))
+    mlruns_path = PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]
+    mlruns_path.mkdir(exist_ok=True)
+    mlflow.set_tracking_uri(mlruns_path.as_uri())  # file:///C:/... — required on Windows
     mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
 
     # ── Step 7: Train baseline (Logistic Regression) ──────────────────────────
@@ -257,6 +260,16 @@ def train_credit_risk() -> None:
 
         save_evaluation_report(metrics, "credit_risk")
 
+    # SHAP analysis — run outside the MLflow context to avoid artifact logging overhead
+    logger.info("Running SHAP analysis for credit risk...")
+    run_shap_analysis(
+        model=xgb_model,
+        X_test=X_test_proc,
+        feature_names=feature_names,
+        domain="credit_risk",
+        sample_size=cfg["shap"]["sample_size"],
+    )
+
     logger.info("Credit risk training complete.")
 
 
@@ -314,7 +327,9 @@ def train_network_intrusion() -> None:
     save_pipeline(pipeline, pipeline_path)
 
     # ── Step 7: MLflow setup ──────────────────────────────────────────────────
-    mlflow.set_tracking_uri(str(PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]))
+    mlruns_path = PROJECT_ROOT / cfg["mlflow"]["tracking_uri"]
+    mlruns_path.mkdir(exist_ok=True)
+    mlflow.set_tracking_uri(mlruns_path.as_uri())  # file:///C:/... — required on Windows
     mlflow.set_experiment(cfg["mlflow"]["experiment_name"])
 
     # ── Step 8: Baseline ──────────────────────────────────────────────────────
@@ -391,6 +406,15 @@ def train_network_intrusion() -> None:
         joblib.dump(xgb_model, model_path)
 
         save_evaluation_report(metrics, "network_intrusion")
+
+    logger.info("Running SHAP analysis for network intrusion...")
+    run_shap_analysis(
+        model=xgb_model,
+        X_test=X_test_proc,
+        feature_names=feature_names,
+        domain="network_intrusion",
+        sample_size=cfg["shap"]["sample_size"],
+    )
 
     logger.info("Network intrusion training complete.")
 

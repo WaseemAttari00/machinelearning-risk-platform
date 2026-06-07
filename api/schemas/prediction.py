@@ -19,98 +19,75 @@ FastAPI uses these schemas to:
   - Validate incoming requests before they reach your business logic
   - Serialize outgoing responses to JSON
 
-Interview note:
-  "Input validation at the system boundary" is a best practice in software
-  engineering. Pydantic + FastAPI is the modern Python way to implement it.
+Dataset: UCI Default of Credit Card Clients
+  30,000 Taiwanese credit card holders, Sept 2005.
+  Features: credit limit, demographics, repayment history, bill & payment amounts.
 """
 
-from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreditRiskInput(BaseModel):
     """
-    Input schema for credit risk prediction.
-
-    All fields correspond to columns in the Give Me Some Credit dataset.
-    Field descriptions, constraints, and examples appear automatically in
-    the FastAPI /docs Swagger UI.
+    Input schema for credit risk prediction (UCI Credit Card Default dataset).
+    All monetary values are in New Taiwan Dollar (NTD).
     """
 
-    RevolvingUtilizationOfUnsecuredLines: float = Field(
-        ...,
-        ge=0.0,
-        description="Total balance on credit cards and personal lines of credit "
-                    "divided by the sum of credit limits. Range: [0, ∞]",
-        example=0.766,
+    LIMIT_BAL: float = Field(
+        ..., ge=0,
+        description="Credit limit amount (NTD). Typical range: 10,000 – 800,000.",
+        example=200000.0,
     )
-    age: int = Field(
-        ...,
-        ge=18,
-        le=120,
-        description="Age of borrower in years.",
-        example=45,
-    )
-    NumberOfTime30_59DaysPastDueNotWorse: int = Field(
-        ...,
-        ge=0,
-        description="Number of times borrower has been 30-59 days past due.",
+    SEX: int = Field(
+        ..., ge=1, le=2,
+        description="Gender: 1=male, 2=female.",
         example=2,
-        alias="NumberOfTime30-59DaysPastDueNotWorse",
     )
-    DebtRatio: float = Field(
-        ...,
-        ge=0.0,
-        description="Monthly debt payments / monthly gross income.",
-        example=0.803,
+    EDUCATION: int = Field(
+        ..., ge=1, le=4,
+        description="Education level: 1=graduate school, 2=university, 3=high school, 4=other.",
+        example=2,
     )
-    MonthlyIncome: Optional[float] = Field(
-        None,
-        ge=0.0,
-        description="Monthly income in USD. Can be null (handled by imputer).",
-        example=9120.0,
+    MARRIAGE: int = Field(
+        ..., ge=1, le=3,
+        description="Marital status: 1=married, 2=single, 3=other.",
+        example=1,
     )
-    NumberOfOpenCreditLinesAndLoans: int = Field(
-        ...,
-        ge=0,
-        description="Number of open loans and lines of credit.",
-        example=13,
+    AGE: int = Field(
+        ..., ge=18, le=100,
+        description="Age in years.",
+        example=35,
     )
-    NumberOfTimes90DaysLate: int = Field(
-        ...,
-        ge=0,
-        description="Number of times borrower has been 90+ days past due.",
-        example=0,
+    PAY_0: int = Field(
+        ..., ge=-2, le=9,
+        description="Repayment status September 2005. -2=no consumption, -1=paid duly, "
+                    "1=one month delay, 2=two month delay, ..., 9=nine+ month delay.",
+        example=-1,
     )
-    NumberRealEstateLoansOrLines: int = Field(
-        ...,
-        ge=0,
-        description="Number of mortgage and real estate loans.",
-        example=6,
-    )
-    NumberOfTime60_89DaysPastDueNotWorse: int = Field(
-        ...,
-        ge=0,
-        description="Number of times borrower has been 60-89 days past due.",
-        example=0,
-        alias="NumberOfTime60-89DaysPastDueNotWorse",
-    )
-    NumberOfDependents: Optional[float] = Field(
-        None,
-        ge=0,
-        description="Number of dependents in family (spouse, children, etc.).",
-        example=2.0,
-    )
-
-    model_config = {"populate_by_name": True}
+    PAY_2: int = Field(..., ge=-2, le=9, description="Repayment status August 2005.", example=-1)
+    PAY_3: int = Field(..., ge=-2, le=9, description="Repayment status July 2005.", example=-1)
+    PAY_4: int = Field(..., ge=-2, le=9, description="Repayment status June 2005.", example=-1)
+    PAY_5: int = Field(..., ge=-2, le=9, description="Repayment status May 2005.", example=-1)
+    PAY_6: int = Field(..., ge=-2, le=9, description="Repayment status April 2005.", example=-1)
+    BILL_AMT1: float = Field(..., description="Bill statement September 2005 (NTD).", example=3913.0)
+    BILL_AMT2: float = Field(..., description="Bill statement August 2005 (NTD).", example=3102.0)
+    BILL_AMT3: float = Field(..., description="Bill statement July 2005 (NTD).", example=689.0)
+    BILL_AMT4: float = Field(..., description="Bill statement June 2005 (NTD).", example=0.0)
+    BILL_AMT5: float = Field(..., description="Bill statement May 2005 (NTD).", example=0.0)
+    BILL_AMT6: float = Field(..., description="Bill statement April 2005 (NTD).", example=0.0)
+    PAY_AMT1: float = Field(..., ge=0, description="Payment amount September 2005 (NTD).", example=0.0)
+    PAY_AMT2: float = Field(..., ge=0, description="Payment amount August 2005 (NTD).", example=689.0)
+    PAY_AMT3: float = Field(..., ge=0, description="Payment amount July 2005 (NTD).", example=0.0)
+    PAY_AMT4: float = Field(..., ge=0, description="Payment amount June 2005 (NTD).", example=0.0)
+    PAY_AMT5: float = Field(..., ge=0, description="Payment amount May 2005 (NTD).", example=0.0)
+    PAY_AMT6: float = Field(..., ge=0, description="Payment amount April 2005 (NTD).", example=0.0)
 
 
 class NetworkIntrusionInput(BaseModel):
     """
-    Input schema for network intrusion detection.
-
-    Contains the core NSL-KDD features. Only the most impactful features
-    are required; others are optional (the model pipeline imputes missing ones).
+    Input schema for network intrusion detection (NSL-KDD dataset).
+    Contains the core NSL-KDD features. Optional fields are imputed if missing.
     """
     duration: float = Field(..., ge=0.0, description="Duration of connection in seconds.", example=0.0)
     protocol_type: str = Field(..., description="Network protocol: tcp, udp, or icmp.", example="tcp")
@@ -128,7 +105,7 @@ class NetworkIntrusionInput(BaseModel):
     serror_rate: float = Field(0.0, ge=0.0, le=1.0, description="% connections with SYN errors.", example=0.0)
     rerror_rate: float = Field(0.0, ge=0.0, le=1.0, description="% connections with REJ errors.", example=0.0)
 
-    # Optional fields — will be imputed if missing
+    # Optional fields with sensible defaults
     land: Optional[int] = Field(0, ge=0, le=1)
     wrong_fragment: Optional[float] = Field(0.0, ge=0.0)
     urgent: Optional[float] = Field(0.0, ge=0.0)
@@ -166,12 +143,7 @@ class NetworkIntrusionInput(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    """
-    Response schema for all prediction endpoints.
-
-    Consistent response structure regardless of domain — the frontend
-    doesn't need domain-specific parsing logic.
-    """
+    """Response schema for all prediction endpoints."""
     prediction: int = Field(..., description="Binary prediction: 0 (safe) or 1 (risky)")
     probability: float = Field(..., description="Probability of being class 1 (risky)")
     risk_label: str = Field(..., description="Human-readable label for the prediction")
