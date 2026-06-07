@@ -1,0 +1,14 @@
+aliases: []
+creation_timestamp: 1780796919735
+current_stage: None
+description: null
+last_updated_timestamp: 1780796919735
+name: credit_risk_xgboost
+run_id: 2273722c5afd4e93b8d7492c498ac3ba
+run_link: null
+source: file:///C:/Users/waseem/Desktop/ML%20Project/mlruns/967446072152371127/2273722c5afd4e93b8d7492c498ac3ba/artifacts/model
+status: READY
+status_message: null
+storage_location: file:///C:/Users/waseem/Desktop/ML%20Project/mlruns/967446072152371127/2273722c5afd4e93b8d7492c498ac3ba/artifacts/model
+user_id: null
+version: 1

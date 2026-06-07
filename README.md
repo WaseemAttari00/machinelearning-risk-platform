@@ -9,7 +9,7 @@
 
 | Domain | Task | Dataset |
 |---|---|---|
-| **Credit Risk** | Predict probability of loan default | Give Me Some Credit (Kaggle) |
+| **Credit Risk** | Predict probability of credit card default | UCI Default of Credit Card Clients |
 | **Network Intrusion** | Detect malicious vs. benign traffic | NSL-KDD |
 
 ---
@@ -145,4 +145,4 @@ Optimal decision threshold: **0.050** (test set has novel attack types → low t
 
 ## Author
 
-Waseem Attari — built as a portfolio project demonstrating ML engineering practices.
+Waseem Attari.

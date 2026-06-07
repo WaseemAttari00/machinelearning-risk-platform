@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/waseem/Desktop/ML%20Project/mlruns/967446072152371127/2273722c5afd4e93b8d7492c498ac3ba/artifacts
+end_time: 1780796919756
+entry_point_name: ''
+experiment_id: '967446072152371127'
+lifecycle_stage: active
+run_id: 2273722c5afd4e93b8d7492c498ac3ba
+run_name: xgboost_tuned
+run_uuid: 2273722c5afd4e93b8d7492c498ac3ba
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1780796915318
+status: 3
+tags: []
+user_id: waseem

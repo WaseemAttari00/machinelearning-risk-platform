@@ -1,0 +1,53 @@
+{
+  "domain": "credit_risk",
+  "model_name": "xgboost_tuned",
+  "scalar_metrics": {
+    "accuracy": 0.7663,
+    "precision": 0.4781,
+    "recall": 0.6164,
+    "f1": 0.5385,
+    "roc_auc": 0.7811,
+    "threshold": 0.5,
+    "optimal_threshold": 0.53,
+    "optimal_f1": 0.5435
+  },
+  "confusion_matrix": [
+    [
+      3780,
+      893
+    ],
+    [
+      509,
+      818
+    ]
+  ],
+  "classification_report": "              precision    recall  f1-score   support\n\n           0       0.88      0.81      0.84      4673\n           1       0.48      0.62      0.54      1327\n\n    accuracy                           0.77      6000\n   macro avg       0.68      0.71      0.69      6000\nweighted avg       0.79      0.77      0.78      6000\n",
+  "optimal_threshold": 0.5300000000000001,
+  "feature_importance": {
+    "PAY_0": 0.4464443027973175,
+    "PAY_2": 0.15480098128318787,
+    "PAY_3": 0.07115716487169266,
+    "PAY_4": 0.05561338737607002,
+    "PAY_5": 0.032887425273656845,
+    "PAY_6": 0.024087198078632355,
+    "LIMIT_BAL": 0.020991524681448936,
+    "PAY_AMT2": 0.018847132101655006,
+    "PAY_AMT1": 0.0168790090829134,
+    "BILL_AMT1": 0.016512032598257065,
+    "PAY_AMT3": 0.01621273346245289,
+    "BILL_AMT2": 0.01420105341821909,
+    "PAY_AMT6": 0.011976134963333607,
+    "PAY_AMT4": 0.011410045437514782,
+    "SEX": 0.011126034893095493,
+    "BILL_AMT4": 0.01062166690826416,
+    "EDUCATION": 0.010410327464342117,
+    "BILL_AMT3": 0.010163179598748684,
+    "BILL_AMT5": 0.009741050191223621,
+    "PAY_AMT5": 0.0095814298838377,
+    "BILL_AMT6": 0.009100204333662987,
+    "MARRIAGE": 0.008775360882282257,
+    "AGE": 0.008460648357868195
+  },
+  "n_test_samples": 6000,
+  "n_positive": 1327
+}

@@ -1,0 +1,21 @@
+# Normalize line endings across OS
+# Anyone cloning on Mac/Linux gets LF; Windows gets CRLF for text files
+* text=auto
+
+# Force LF for Python/YAML/config files (prevents diff noise when switching OS)
+*.py    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.sh    text eol=lf
+
+# Binary files — never convert
+*.joblib binary
+*.pkl    binary
+*.parquet binary
+*.png    binary
+*.jpg    binary
+*.zip    binary
+*.xls    binary
