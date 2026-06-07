@@ -29,5 +29,8 @@ jobs:
       - name: Install dependencies
         run: pip install --prefer-binary -r requirements.txt
 
+      - name: Install package
+        run: pip install -e .
+
       - name: Run tests
         run: pytest tests/ -v --tb=short
