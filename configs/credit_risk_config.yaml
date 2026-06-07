@@ -1,0 +1,105 @@
+# ── Credit Risk Domain Configuration ─────────────────────────────────────────
+# This file controls everything about the credit risk pipeline.
+# Changing a value here changes behavior everywhere — no code edits needed.
+
+domain: credit_risk
+description: "Predict probability of loan default (binary classification)"
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+data:
+  raw_path: "data/raw/credit_risk/cs-training.csv"
+  processed_train_path: "data/processed/credit_risk/train.parquet"
+  processed_test_path: "data/processed/credit_risk/test.parquet"
+  target_column: "SeriousDlqin2yrs"
+  test_size: 0.2
+  random_state: 42
+
+# ── Features ─────────────────────────────────────────────────────────────────
+features:
+  # These are the raw column names from the original CSV
+  numeric_features:
+    - RevolvingUtilizationOfUnsecuredLines
+    - age
+    - NumberOfTime30-59DaysPastDueNotWorse
+    - DebtRatio
+    - MonthlyIncome
+    - NumberOfOpenCreditLinesAndLoans
+    - NumberOfTimes90DaysLate
+    - NumberRealEstateLoansOrLines
+    - NumberOfTime60-89DaysPastDueNotWorse
+    - NumberOfDependents
+  categorical_features: []    # No categorical features in this dataset
+  drop_columns:
+    - Unnamed: 0              # Row index column from Kaggle CSV
+
+  # Imputation strategy for missing values
+  imputation:
+    MonthlyIncome: median
+    NumberOfDependents: median
+
+  # Outlier clipping: clip values above this percentile
+  outlier_clip_percentile: 99
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  # Baseline model (always train this first to have a reference point)
+  baseline:
+    type: logistic_regression
+    params:
+      max_iter: 1000
+      class_weight: balanced
+      random_state: 42
+
+  # Primary model
+  primary:
+    type: xgboost
+    params:
+      n_estimators: 300
+      max_depth: 6
+      learning_rate: 0.05
+      subsample: 0.8
+      colsample_bytree: 0.8
+      scale_pos_weight: 13    # Approx ratio of negatives/positives for imbalance
+      random_state: 42
+      eval_metric: auc
+      early_stopping_rounds: 20
+
+# ── Hyperparameter Tuning ─────────────────────────────────────────────────────
+tuning:
+  n_trials: 50               # Number of Optuna trials (increase for better results)
+  direction: maximize        # Maximize ROC-AUC
+  metric: roc_auc
+  cv_folds: 5
+  # Search space — Optuna will sample from these ranges
+  search_space:
+    n_estimators: [100, 500]
+    max_depth: [3, 9]
+    learning_rate: [0.01, 0.3]
+    subsample: [0.6, 1.0]
+    colsample_bytree: [0.6, 1.0]
+    min_child_weight: [1, 10]
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+  # Decision threshold tuning: evaluate these thresholds and pick best F1
+  threshold_range: [0.1, 0.9]
+  threshold_step: 0.05
+  positive_class_label: "Default"
+  negative_class_label: "No Default"
+
+# ── MLflow ────────────────────────────────────────────────────────────────────
+mlflow:
+  experiment_name: "credit_risk_prediction"
+  model_name: "credit_risk_xgboost"
+  tracking_uri: "mlruns"     # Local filesystem tracking
+
+# ── SHAP ──────────────────────────────────────────────────────────────────────
+shap:
+  max_display_features: 15   # How many features to show in summary plot
+  sample_size: 1000          # Subsample for SHAP (full dataset can be slow)

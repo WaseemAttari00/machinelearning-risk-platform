@@ -1,0 +1,171 @@
+# ── Network Intrusion Detection Configuration ─────────────────────────────────
+domain: network_intrusion
+description: "Detect malicious vs. benign network traffic (binary classification)"
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+data:
+  # NSL-KDD provides separate train/test splits — we respect them
+  raw_train_path: "data/raw/network_intrusion/KDDTrain+.txt"
+  raw_test_path: "data/raw/network_intrusion/KDDTest+.txt"
+  processed_train_path: "data/processed/network_intrusion/train.parquet"
+  processed_test_path: "data/processed/network_intrusion/test.parquet"
+  target_column: "label"
+  # NSL-KDD has no header — these are the 43 column names
+  column_names:
+    - duration
+    - protocol_type
+    - service
+    - flag
+    - src_bytes
+    - dst_bytes
+    - land
+    - wrong_fragment
+    - urgent
+    - hot
+    - num_failed_logins
+    - logged_in
+    - num_compromised
+    - root_shell
+    - su_attempted
+    - num_root
+    - num_file_creations
+    - num_shells
+    - num_access_files
+    - num_outbound_cmds
+    - is_host_login
+    - is_guest_login
+    - count
+    - srv_count
+    - serror_rate
+    - srv_serror_rate
+    - rerror_rate
+    - srv_rerror_rate
+    - same_srv_rate
+    - diff_srv_rate
+    - srv_diff_host_rate
+    - dst_host_count
+    - dst_host_srv_count
+    - dst_host_same_srv_rate
+    - dst_host_diff_srv_rate
+    - dst_host_same_src_port_rate
+    - dst_host_srv_diff_host_rate
+    - dst_host_serror_rate
+    - dst_host_srv_serror_rate
+    - dst_host_rerror_rate
+    - dst_host_srv_rerror_rate
+    - label
+    - difficulty_level         # Drop this — it's a meta-column, not a feature
+  drop_columns:
+    - difficulty_level
+  random_state: 42
+
+# ── Features ─────────────────────────────────────────────────────────────────
+features:
+  numeric_features:
+    - duration
+    - src_bytes
+    - dst_bytes
+    - land
+    - wrong_fragment
+    - urgent
+    - hot
+    - num_failed_logins
+    - logged_in
+    - num_compromised
+    - root_shell
+    - su_attempted
+    - num_root
+    - num_file_creations
+    - num_shells
+    - num_access_files
+    - num_outbound_cmds
+    - is_host_login
+    - is_guest_login
+    - count
+    - srv_count
+    - serror_rate
+    - srv_serror_rate
+    - rerror_rate
+    - srv_rerror_rate
+    - same_srv_rate
+    - diff_srv_rate
+    - srv_diff_host_rate
+    - dst_host_count
+    - dst_host_srv_count
+    - dst_host_same_srv_rate
+    - dst_host_diff_srv_rate
+    - dst_host_same_src_port_rate
+    - dst_host_srv_diff_host_rate
+    - dst_host_serror_rate
+    - dst_host_srv_serror_rate
+    - dst_host_rerror_rate
+    - dst_host_srv_rerror_rate
+  categorical_features:
+    - protocol_type     # tcp, udp, icmp
+    - service           # http, ftp, smtp, etc.
+    - flag              # SF, S0, REJ, etc.
+
+  # NSL-KDD target: "normal" = 0, everything else = 1 (attack)
+  # The label column contains strings like "normal", "neptune", "smurf", etc.
+  binary_label_map:
+    normal: 0
+    attack: 1           # All non-normal labels map to 1
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  baseline:
+    type: logistic_regression
+    params:
+      max_iter: 1000
+      class_weight: balanced
+      random_state: 42
+
+  primary:
+    type: xgboost
+    params:
+      n_estimators: 300
+      max_depth: 6
+      learning_rate: 0.05
+      subsample: 0.8
+      colsample_bytree: 0.8
+      random_state: 42
+      eval_metric: auc
+      early_stopping_rounds: 20
+
+# ── Hyperparameter Tuning ─────────────────────────────────────────────────────
+tuning:
+  n_trials: 50
+  direction: maximize
+  metric: roc_auc
+  cv_folds: 5
+  search_space:
+    n_estimators: [100, 500]
+    max_depth: [3, 9]
+    learning_rate: [0.01, 0.3]
+    subsample: [0.6, 1.0]
+    colsample_bytree: [0.6, 1.0]
+    min_child_weight: [1, 10]
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+  threshold_range: [0.1, 0.9]
+  threshold_step: 0.05
+  positive_class_label: "Attack"
+  negative_class_label: "Normal"
+
+# ── MLflow ────────────────────────────────────────────────────────────────────
+mlflow:
+  experiment_name: "network_intrusion_detection"
+  model_name: "network_intrusion_xgboost"
+  tracking_uri: "mlruns"
+
+# ── SHAP ──────────────────────────────────────────────────────────────────────
+shap:
+  max_display_features: 15
+  sample_size: 1000

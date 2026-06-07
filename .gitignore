@@ -1,0 +1,58 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+ENV/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── Data files (large — download separately, see data/README.md) ─────────────
+data/raw/
+data/processed/
+*.csv
+*.parquet
+*.zip
+*.gz
+
+# ── Model artifacts (tracked via MLflow instead) ─────────────────────────────
+models/*.pkl
+models/*.joblib
+models/*.json
+models/**/*.pkl
+models/**/*.joblib
+
+# ── MLflow (auto-generated, optionally commit mlruns/ for demo purposes) ─────
+# Uncomment below to ignore mlruns if it gets too large:
+# mlruns/
+
+# ── Environment and secrets ───────────────────────────────────────────────────
+.env
+.env.local
+*.key
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
