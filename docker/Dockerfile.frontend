@@ -1,30 +1,20 @@
-# ── Streamlit Frontend Dockerfile ─────────────────────────────────────────────
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install only the frontend dependencies
-# In a real project you might have a requirements-frontend.txt with just
-# streamlit, plotly, requests — keeping the image smaller.
-# We reuse the full requirements.txt for simplicity.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy frontend code and shared utilities
 COPY frontend/ ./frontend/
 COPY src/ ./src/
 COPY configs/ ./configs/
 
-# Create models directory (for reading evaluation reports and SHAP plots)
 RUN mkdir -p models/credit_risk models/network_intrusion
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Streamlit configuration via environment variables:
-# - Disable the "Deploy" button (not relevant for local use)
-# - Allow all CORS origins
-# - Disable file watcher (reduces container resource usage)
 ENV STREAMLIT_SERVER_PORT=8501
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_HEADLESS=true

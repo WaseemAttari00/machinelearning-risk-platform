@@ -1,75 +1,29 @@
-# ── FastAPI Dockerfile ────────────────────────────────────────────────────────
-#
-# What is a Dockerfile?
-#   A Dockerfile is a script that defines how to build a Docker image.
-#   An image is a snapshot of a reproducible environment: OS, Python version,
-#   installed packages, and your code — all bundled together.
-#   Anyone with Docker can run your app identically, regardless of their OS.
-#
-# Why Docker for ML projects?
-#   "It works on my machine" is the #1 ML deployment problem.
-#   Docker eliminates it. The model, dependencies, and code are frozen together.
-#   This is what MLOps is fundamentally about.
-#
-# Multi-stage builds (advanced):
-#   We use a simple single-stage build here for clarity.
-#   In production, you'd use a multi-stage build:
-#     Stage 1: Install build dependencies, compile wheels
-#     Stage 2: Copy only the compiled wheels (no compiler tools)
-#   This shrinks the final image from ~2GB to ~500MB.
-
-# Base image: official Python 3.11 slim (Debian-based, no extras)
-# "slim" omits build tools (~400MB smaller than the full image)
 FROM python:3.11-slim
 
-# Set working directory inside the container
-# All subsequent commands run relative to this directory
 WORKDIR /app
 
-# ── System dependencies ───────────────────────────────────────────────────────
 # libgomp1 is required by XGBoost for OpenMP parallelism
-# Without it, XGBoost falls back to single-threaded (slower)
 RUN apt-get update && apt-get install -y \
     libgomp1 \
-    && rm -rf /var/lib/apt/lists/*    # Clean package cache to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
-# ── Install Python dependencies ───────────────────────────────────────────────
-# Copy requirements first (before copying code).
-# Why? Docker caches each layer. If requirements.txt hasn't changed,
-# Docker reuses the cached pip install layer — much faster rebuilds.
-# If we copied all code first, any code change would invalidate the pip cache.
+# Copy requirements first to leverage Docker layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-# ── Copy application code ─────────────────────────────────────────────────────
-# Copy src/ and api/ (the only directories the API needs)
 COPY src/ ./src/
 COPY api/ ./api/
 COPY configs/ ./configs/
 
-# Create the models directory (will be populated by training or mounted as a volume)
 RUN mkdir -p models/credit_risk models/network_intrusion
 
-# ── Environment variables ─────────────────────────────────────────────────────
-# These can be overridden at runtime: docker run -e PORT=9000 ...
 ENV PORT=8000
 ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1    # Forces Python to not buffer stdout/stderr (better logging)
+ENV PYTHONUNBUFFERED=1
 
-# ── Expose port ───────────────────────────────────────────────────────────────
-# EXPOSE documents which port the container listens on.
-# It doesn't actually publish the port — that's done with docker run -p or docker-compose.
 EXPOSE 8000
 
-# ── Health check ─────────────────────────────────────────────────────────────
-# Docker runs this command periodically to check if the container is healthy.
-# If it fails 3 times, Docker marks the container as "unhealthy".
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
-# ── Start command ─────────────────────────────────────────────────────────────
-# uvicorn: the ASGI server for FastAPI
-# --host 0.0.0.0: listen on all interfaces (not just localhost)
-#                 Required in Docker — localhost only accepts connections from inside the container
-# --workers 1: single worker (appropriate for CPU-bound ML inference)
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
